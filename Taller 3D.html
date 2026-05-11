@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Taller de Cerámica — Render 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#f4f1ec;
+    --panel:#ffffff;
+    --ink:#1a1a1a;
+    --muted:#6b6b6b;
+    --line:#e6e1d8;
+    --accent:#c4724a;
+    --accent-soft:#e9d7c8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);font-family:"Inter",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:var(--ink);overflow:hidden}
+  #app{position:fixed;inset:0}
+  canvas{display:block;outline:none}
+
+  .panel{
+    position:fixed;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:0 10px 30px rgba(20,20,20,.06), 0 2px 6px rgba(20,20,20,.04);
+    backdrop-filter:saturate(1.1);
+  }
+
+  /* Header */
+  .top{
+    top:18px; left:18px; right:18px;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 16px;
+    pointer-events:none;
+  }
+  .top > *{ pointer-events:auto }
+  .brand{ display:flex; align-items:center; gap:12px }
+  .brand .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent) }
+  .brand h1{ font-size:14px; margin:0; font-weight:600; letter-spacing:.01em }
+  .brand .sub{ font-size:12px; color:var(--muted); margin-top:1px }
+
+  .modes{ display:flex; gap:4px; background:#f6f3ed; padding:4px; border-radius:10px; border:1px solid var(--line) }
+  .modes button{
+    border:0; background:transparent; padding:7px 12px; font-size:12.5px; font-weight:500;
+    color:var(--muted); border-radius:7px; cursor:pointer; font-family:inherit;
+  }
+  .modes button.on{ background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.06) }
+
+  /* Sidebar — objects */
+  .side{
+    top:78px; left:18px;
+    width:260px;
+    padding:14px;
+    max-height:calc(100vh - 110px);
+    overflow:auto;
+  }
+  .side h2{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; font-weight:600 }
+  .obj-list{ display:flex; flex-direction:column; gap:4px }
+  .obj{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 10px; border-radius:9px; cursor:pointer;
+    border:1px solid transparent;
+    transition:background .12s ease;
+  }
+  .obj:hover{ background:#faf7f1 }
+  .obj.sel{ background:var(--accent-soft); border-color:#dcc1aa }
+  .obj .sw{ width:14px; height:14px; border-radius:4px; flex-shrink:0; border:1px solid rgba(0,0,0,.08) }
+  .obj .nm{ font-size:13px; font-weight:500; flex:1 }
+  .obj .eye{
+    width:24px; height:24px; display:flex; align-items:center; justify-content:center;
+    border-radius:6px; cursor:pointer; color:#aaa; flex-shrink:0;
+    transition: background .12s, color .12s;
+  }
+  .obj .eye:hover{ background:#eee5d3; color:#1a1a1a }
+  .obj.hidden{ opacity:0.5 }
+  .obj.hidden .nm{ text-decoration: line-through; color:#999 }
+  .obj.hidden .eye{ color:#999 }
+  .obj .dim{ font-size:11px; color:var(--muted) }
+
+  .divider{ height:1px; background:var(--line); margin:14px -14px }
+
+  .actions{ display:flex; flex-direction:column; gap:6px }
+  .act{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:9px 11px; font-size:12.5px; border:1px solid var(--line);
+    border-radius:9px; background:#fff; cursor:pointer; font-family:inherit;
+    color:var(--ink);
+  }
+  .act:hover{ background:#faf7f1 }
+  .act.on{ background:#1a1a1a; color:#fff; border-color:#1a1a1a }
+  .act.on kbd{ background:#2e2a25; color:#bbb; border-color:#2e2a25 }
+  .measure-label{
+    position:absolute; transform:translate(-50%,-50%);
+    background:#1a1a1a; color:#fff; padding:4px 9px; border-radius:6px;
+    font-size:12px; font-weight:600; font-variant-numeric:tabular-nums;
+    pointer-events:none; white-space:nowrap;
+    box-shadow:0 4px 12px rgba(0,0,0,.2);
+  }
+  .measure-label.ghost{ background:#c4724a }
+  .ruler-cursor{ cursor:crosshair !important }
+  .act kbd{ font-size:10.5px; color:var(--muted); background:#f4f1ec; border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-family:inherit }
+
+  /* Inspector */
+  .inspector{
+    top:78px; right:18px; width:240px; padding:14px;
+  }
+  .inspector h2{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 4px; font-weight:600 }
+  .inspector .title{ font-size:15px; font-weight:600; margin:0 0 12px }
+  .row{ display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:6px 0 }
+  .row .lbl{ color:var(--muted) }
+  .row .val{ font-variant-numeric:tabular-nums; font-weight:500 }
+  .rotbar{ display:flex; gap:6px; margin-top:8px }
+  .rotbar button{
+    flex:1; padding:8px; font-size:12px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; font-family:inherit;
+  }
+  .rotbar button:hover{ background:#faf7f1 }
+
+  /* Footer hints */
+  .hints{
+    bottom:18px; left:50%; transform:translateX(-50%);
+    padding:10px 16px; font-size:12px; color:var(--muted);
+    display:flex; gap:18px; align-items:center;
+  }
+  .hints span b{ color:var(--ink); font-weight:600 }
+  .hints .pip{ width:5px; height:5px; border-radius:50%; background:var(--line) }
+
+  /* Room dims badge */
+  .dimsbadge{
+    bottom:18px; right:18px;
+    padding:10px 14px;
+    font-size:11.5px;
+    color:var(--muted);
+    line-height:1.55;
+  }
+  .dimsbadge b{ color:var(--ink); font-weight:600 }
+
+  /* Empty inspector state */
+  .empty{
+    font-size:12.5px; color:var(--muted); line-height:1.5;
+    padding:10px 0;
+  }
+
+  /* Scrollbar */
+  .side::-webkit-scrollbar{ width:6px }
+  .side::-webkit-scrollbar-thumb{ background:#e0d9cc; border-radius:3px }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="panel top">
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <h1>Taller de Cerámica</h1>
+      <div class="sub">Render 3D · planificador de layout</div>
+    </div>
+  </div>
+  <div class="modes" id="modes">
+    <button data-mode="orbit" class="on">Orbital</button>
+    <button data-mode="top">Vista superior</button>
+  </div>
+</div>
+
+<div class="panel side">
+  <h2>Objetos</h2>
+  <div class="obj-list" id="objList"></div>
+
+  <div class="divider"></div>
+
+  <h2>Acciones</h2>
+  <div class="actions">
+    <button class="act" id="btnRuler">Regla — medir <kbd>M</kbd></button>
+    <button class="act" id="btnClearRuler" style="display:none">Borrar medidas</button>
+    <button class="act" id="btnFixInitial">Fijar como inicial</button>
+    <button class="act" id="btnReset">Restaurar layout <kbd>R</kbd></button>
+    <button class="act" id="btnSave">Guardar layout <kbd>S</kbd></button>
+    <button class="act" id="btnDeselect">Deseleccionar <kbd>Esc</kbd></button>
+  </div>
+</div>
+
+<div class="panel inspector" id="inspector">
+  <h2>Inspector</h2>
+  <p class="title" id="iTitle">— Sin selección —</p>
+  <div id="iBody" class="empty">
+    Haz click en un objeto del taller para seleccionarlo. Arrástralo con el mouse para moverlo. Usa los botones para rotarlo.
+  </div>
+</div>
+
+<div class="panel hints">
+  <span><b>Click objeto</b> seleccionar</span>
+  <div class="pip"></div>
+  <span><b>Arrastrar objeto</b> mover</span>
+  <div class="pip"></div>
+  <span><b>Arrastrar fondo</b> orbitar</span>
+  <div class="pip"></div>
+  <span><b>Scroll</b> zoom</span>
+</div>
+
+<div class="panel dimsbadge">
+  <b>4,61 × 4,46 m</b> · alto <b>2,55 m</b><br/>
+  Área útil: <b>20,56 m²</b>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { DragControls } from 'three/addons/controls/DragControls.js';
+
+// ============== ROOM CONFIG ==============
+const ROOM = { w: 4.61, d: 4.46, h: 2.55 };
+
+// Color palette — light/clean modern workshop
+const C = {
+  floor:      0xece4d4,  // warm light wood
+  floorEdge:  0xd9cdb6,
+  wall:       0xf5f1e9,  // off-white
+  wallTrim:   0xe6dfd0,
+  ceilingHint:0xf9f6ef,
+  wood:       0xc99464,  // tables
+  woodDark:   0x8d623f,
+  woodLight:  0xe0bd96,
+  metal:      0xb8b3a8,  // shelving
+  metalDark:  0x8a8579,
+  kiln:       0xd4cfc5,  // kiln body
+  kilnTrim:   0x6f6c64,
+  wheel:      0xa9a098,  // pottery wheel
+  wheelTop:   0x4a4640,
+  cabinet:    0xd9b591,  // mueble
+  stool:      0x8d623f,
+  person1:    0xc4724a,
+  person2:    0x6b8c7f,
+  ground:     0xefe9dc,
+};
+
+// ============== SCENE ==============
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f1ec);
+scene.fog = new THREE.Fog(0xf4f1ec, 12, 22);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+const orbitStart = new THREE.Vector3(6.2, 5.8, 6.4);
+camera.position.copy(orbitStart);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+app.appendChild(renderer.domElement);
+
+// Lights — bright, clean
+const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+scene.add(ambient);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0xe8dcc6, 0.45);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xfff4e0, 0.85);
+sun.position.set(5, 8, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 25;
+sun.shadow.camera.left = -8;
+sun.shadow.camera.right = 8;
+sun.shadow.camera.top = 8;
+sun.shadow.camera.bottom = -8;
+sun.shadow.bias = -0.0005;
+sun.shadow.radius = 4;
+scene.add(sun);
+
+// Subtle fill from window side
+const fill = new THREE.DirectionalLight(0xc8d8ff, 0.18);
+fill.position.set(-3, 4, -2);
+scene.add(fill);
+
+// ============== ROOM ==============
+const roomGroup = new THREE.Group();
+scene.add(roomGroup);
+
+// Ground (outside room)
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40),
+  new THREE.MeshStandardMaterial({ color: C.ground, roughness: 1 })
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.y = -0.01;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Floor
+const floor = new THREE.Mesh(
+  new THREE.BoxGeometry(ROOM.w, 0.04, ROOM.d),
+  new THREE.MeshStandardMaterial({ color: C.floor, roughness: 0.85 })
+);
+floor.position.set(0, 0.02, 0);
+floor.receiveShadow = true;
+roomGroup.add(floor);
+
+// Subtle floor planks (thin lines as overlay strips)
+for (let i=1; i<6; i++){
+  const x = -ROOM.w/2 + i*(ROOM.w/6);
+  const line = new THREE.Mesh(
+    new THREE.BoxGeometry(0.005, 0.005, ROOM.d),
+    new THREE.MeshStandardMaterial({ color: C.floorEdge, roughness:1 })
+  );
+  line.position.set(x, 0.041, 0);
+  roomGroup.add(line);
+}
+
+// Walls — back & left (the "closed" sides facing the camera-back)
+const wallMat = new THREE.MeshStandardMaterial({ color: C.wall, roughness: 0.95, side: THREE.DoubleSide });
+const wallThick = 0.08;
+
+// Back wall (north, -z side)
+const wallN = new THREE.Mesh(
+  new THREE.BoxGeometry(ROOM.w + wallThick*2, ROOM.h, wallThick),
+  wallMat
+);
+wallN.position.set(0, ROOM.h/2, -ROOM.d/2 - wallThick/2);
+wallN.receiveShadow = true;
+roomGroup.add(wallN);
+
+// Left wall (west, -x side)
+const wallW = new THREE.Mesh(
+  new THREE.BoxGeometry(wallThick, ROOM.h, ROOM.d),
+  wallMat
+);
+wallW.position.set(-ROOM.w/2 - wallThick/2, ROOM.h/2, 0);
+wallW.receiveShadow = true;
+roomGroup.add(wallW);
+
+// Right wall (east, +x side) with door opening
+const rightSegFront = new THREE.Mesh(
+  new THREE.BoxGeometry(wallThick, ROOM.h, ROOM.d*0.45),
+  wallMat
+);
+rightSegFront.position.set(ROOM.w/2 + wallThick/2, ROOM.h/2, ROOM.d/2 - (ROOM.d*0.45)/2);
+rightSegFront.receiveShadow = true;
+roomGroup.add(rightSegFront);
+
+const rightSegBack = new THREE.Mesh(
+  new THREE.BoxGeometry(wallThick, ROOM.h, ROOM.d*0.35),
+  wallMat
+);
+rightSegBack.position.set(ROOM.w/2 + wallThick/2, ROOM.h/2, -ROOM.d/2 + (ROOM.d*0.35)/2);
+rightSegBack.receiveShadow = true;
+roomGroup.add(rightSegBack);
+
+// Door header
+const doorHeader = new THREE.Mesh(
+  new THREE.BoxGeometry(wallThick, 0.4, ROOM.d*0.20),
+  wallMat
+);
+doorHeader.position.set(ROOM.w/2 + wallThick/2, ROOM.h - 0.2, 0);
+roomGroup.add(doorHeader);
+
+// Front wall (south, +z) — cut low so we can see inside (only a short baseboard so room feels enclosed)
+const frontTrim = new THREE.Mesh(
+  new THREE.BoxGeometry(ROOM.w + wallThick*2, 0.12, wallThick),
+  new THREE.MeshStandardMaterial({ color: C.wallTrim, roughness:1 })
+);
+frontTrim.position.set(0, 0.06, ROOM.d/2 + wallThick/2);
+roomGroup.add(frontTrim);
+
+// Baseboards
+function baseboard(w, d, x, z, rotY=0){
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, 0.08, d),
+    new THREE.MeshStandardMaterial({ color: C.wallTrim, roughness:1 })
+  );
+  m.position.set(x, 0.04, z);
+  m.rotation.y = rotY;
+  roomGroup.add(m);
+}
+baseboard(ROOM.w, 0.03, 0, -ROOM.d/2 + 0.015);
+baseboard(0.03, ROOM.d, -ROOM.w/2 + 0.015, 0);
+
+// Window on back wall — removed
+
+// ============== OBJECT FACTORIES ==============
+// All objects are THREE.Groups with userData = { id, label, footprint:{w,d}, color }
+// They sit with their base at y=0.
+
+function makeMesaPrincipal(){
+  // 1.81 × 1.0949, height ~0.85
+  const g = new THREE.Group();
+  const W = 1.81, D = 1.0949, H = 0.85;
+  const top = new THREE.Mesh(
+    new THREE.BoxGeometry(W, 0.05, D),
+    new THREE.MeshStandardMaterial({ color: C.wood, roughness:0.75 })
+  );
+  top.position.y = H - 0.025;
+  top.castShadow = true; top.receiveShadow = true;
+  g.add(top);
+
+  const legMat = new THREE.MeshStandardMaterial({ color: C.woodDark, roughness:0.85 });
+  const legGeo = new THREE.BoxGeometry(0.07, H-0.05, 0.07);
+  [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([sx,sz])=>{
+    const l = new THREE.Mesh(legGeo, legMat);
+    l.position.set(sx*(W/2 - 0.08), (H-0.05)/2, sz*(D/2 - 0.08));
+    l.castShadow = true;
+    g.add(l);
+  });
+
+  // A clay lump on top for character
+  const lump = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12, 16, 12),
+    new THREE.MeshStandardMaterial({ color: 0xa37250, roughness:0.95 })
+  );
+  lump.scale.y = 0.6;
+  lump.position.set(-0.4, H + 0.05, 0.2);
+  lump.castShadow = true;
+  g.add(lump);
+
+  g.userData = { id:'mesa_principal', label:'Mesa principal', dims:'1,81 × 1,09 × 0,85 m', footprint:{w:W,d:D}, type:'mesa' };
+  return g;
+}
+
+function makeMesaAmasado(){
+  // 1.0 × 0.5139, height ~1.0 (taller — for kneading)
+  const g = new THREE.Group();
+  const W = 1.0, D = 0.5139, H = 0.9;
+  const top = new THREE.Mesh(
+    new THREE.BoxGeometry(W, 0.06, D),
+    new THREE.MeshStandardMaterial({ color: C.woodLight, roughness:0.85 })
+  );
+  top.position.y = H - 0.03;
+  top.castShadow = true; top.receiveShadow = true;
+  g.add(top);
+
+  // Solid base / cabinet underneath
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(W-0.05, H-0.08, D-0.05),
+    new THREE.MeshStandardMaterial({ color: C.wood, roughness:0.85 })
+  );
+  base.position.y = (H-0.08)/2;
+  base.castShadow = true; base.receiveShadow = true;
+  g.add(base);
+
+  // Drawer line
+  const drawer = new THREE.Mesh(
+    new THREE.BoxGeometry(W-0.08, 0.16, 0.005),
+    new THREE.MeshStandardMaterial({ color: C.woodDark })
+  );
+  drawer.position.set(0, H-0.18, D/2 - 0.022);
+  g.add(drawer);
+
+  g.userData = { id:'mesa_amasado', label:'Mesa de amasado', dims:'1,00 × 0,51 × 0,90 m', footprint:{w:W,d:D}, type:'mesa' };
+  return g;
+}
+
+function makeTorno(idx){
+  // 0.7 × 0.53 base, height 0.6  (pottery wheel station)
+  const g = new THREE.Group();
+  const W = 0.70, D = 0.53, H = 0.60;
+
+  // Base cabinet
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(W, H-0.06, D),
+    new THREE.MeshStandardMaterial({ color: C.wheel, roughness:0.8 })
+  );
+  base.position.y = (H-0.06)/2;
+  base.castShadow = true; base.receiveShadow = true;
+  g.add(base);
+
+  // Wheel head (the spinning disk)
+  const head = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.18, 0.04, 24),
+    new THREE.MeshStandardMaterial({ color: C.wheelTop, roughness:0.6, metalness:0.3 })
+  );
+  head.position.y = H - 0.04;
+  head.castShadow = true;
+  g.add(head);
+
+  // Splash pan ring
+  const pan = new THREE.Mesh(
+    new THREE.TorusGeometry(0.22, 0.025, 8, 24),
+    new THREE.MeshStandardMaterial({ color: C.metalDark, roughness:0.7 })
+  );
+  pan.rotation.x = Math.PI/2;
+  pan.position.y = H - 0.07;
+  g.add(pan);
+
+  g.userData = { id:'torno_'+idx, label:'Torno '+idx, dims:'0,70 × 0,53 × 0,60 m', footprint:{w:W,d:D}, type:'torno' };
+  return g;
+}
+
+function makeStool(parentTorno){
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.16, 0.04, 16),
+    new THREE.MeshStandardMaterial({ color: C.stool, roughness:0.85 })
+  );
+  seat.position.y = 0.45;
+  seat.castShadow = true;
+  g.add(seat);
+
+  const legMat = new THREE.MeshStandardMaterial({ color: C.metalDark, roughness:0.7 });
+  for (let i=0; i<3; i++){
+    const a = (i/3)*Math.PI*2;
+    const leg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.45, 8),
+      legMat
+    );
+    leg.position.set(Math.cos(a)*0.12, 0.22, Math.sin(a)*0.12);
+    leg.rotation.z = Math.cos(a)*0.06;
+    leg.rotation.x = -Math.sin(a)*0.06;
+    leg.castShadow = true;
+    g.add(leg);
+  }
+  g.userData = { id:'banqueta_'+parentTorno, label:'Banqueta '+parentTorno, dims:'Ø 0,32 × 0,45 m', footprint:{w:0.34,d:0.34}, type:'stool' };
+  return g;
+}
+
+function makeHorno(){
+  // Hexagonal electric kiln — 0.7m tall, ~0.7m across
+  const g = new THREE.Group();
+  const R = 0.42, H = 0.95; // a top-loader electric kiln is usually taller; plan says 0.7 height but realistically with stand ~0.95. Use 0.7 to honor plan.
+  const Hreal = 0.7;
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(R, R, Hreal, 6),
+    new THREE.MeshStandardMaterial({ color: C.kiln, roughness:0.85 })
+  );
+  body.position.y = Hreal/2;
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+
+  // Lid rim
+  const rim = new THREE.Mesh(
+    new THREE.CylinderGeometry(R+0.02, R+0.02, 0.04, 6),
+    new THREE.MeshStandardMaterial({ color: C.kilnTrim, roughness:0.6, metalness:0.3 })
+  );
+  rim.position.y = Hreal - 0.02;
+  g.add(rim);
+
+  // Lid handle
+  const handle = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.04, 0.04),
+    new THREE.MeshStandardMaterial({ color: C.kilnTrim, roughness:0.5, metalness:0.4 })
+  );
+  handle.position.y = Hreal + 0.04;
+  g.add(handle);
+
+  // Control panel on a side face
+  const ctrl = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.18, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness:0.7 })
+  );
+  ctrl.position.set(R*0.86, 0.45, R*0.5);
+  ctrl.rotation.y = -Math.PI/3;
+  g.add(ctrl);
+
+  // Two little dials
+  for (let i=0; i<2; i++){
+    const dial = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.018, 0.02, 12),
+      new THREE.MeshStandardMaterial({ color: 0xc4724a, roughness:0.5 })
+    );
+    dial.rotation.x = Math.PI/2;
+    // Place along the control panel face
+    const lx = R*0.86 + Math.cos(-Math.PI/3 + Math.PI/2)*0.03;
+    const lz = R*0.5  + Math.sin(-Math.PI/3 + Math.PI/2)*0.03;
+    dial.position.set(lx + (i-0.5)*0.08*Math.cos(-Math.PI/3), 0.45, lz + (i-0.5)*0.08*Math.sin(-Math.PI/3));
+    g.add(dial);
+  }
+
+  g.userData = { id:'horno', label:'Horno eléctrico', dims:'Ø 0,84 × 0,70 m · hexagonal', footprint:{w:0.84,d:0.84}, type:'kiln' };
+  return g;
+}
+
+function makeMueble(){
+  // 1.2 × 0.5, height ~1.0  — storage cabinet
+  const g = new THREE.Group();
+  const W = 1.2, D = 0.5, H = 1.0;
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(W, H, D),
+    new THREE.MeshStandardMaterial({ color: C.cabinet, roughness:0.85 })
+  );
+  body.position.y = H/2;
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+
+  // Door split
+  const split = new THREE.Mesh(
+    new THREE.BoxGeometry(0.01, H-0.1, 0.005),
+    new THREE.MeshStandardMaterial({ color: C.woodDark })
+  );
+  split.position.set(0, H/2, D/2 - 0.003);
+  g.add(split);
+
+  // Handles
+  const hMat = new THREE.MeshStandardMaterial({ color: C.kilnTrim, roughness:0.4, metalness:0.5 });
+  [[-0.05, D/2+0.005], [0.05, D/2+0.005]].forEach(([x,z])=>{
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.02), hMat);
+    h.position.set(x, H/2, z);
+    g.add(h);
+  });
+
+  // Top counter overhang
+  const top = new THREE.Mesh(
+    new THREE.BoxGeometry(W+0.03, 0.04, D+0.03),
+    new THREE.MeshStandardMaterial({ color: C.wood, roughness:0.8 })
+  );
+  top.position.y = H + 0.02;
+  top.castShadow = true;
+  g.add(top);
+
+  g.userData = { id:'mueble', label:'Mueble', dims:'1,20 × 0,50 × 1,00 m', footprint:{w:W,d:D}, type:'cabinet' };
+  return g;
+}
+
+function makeEstanteria(){
+  // 0.43 deep × 2.60 wide × ~2.20 tall  — open shelving
+  const g = new THREE.Group();
+  const W = 2.60, D = 0.43, H = 2.20;
+
+  // Uprights
+  const upMat = new THREE.MeshStandardMaterial({ color: C.metalDark, roughness:0.6, metalness:0.3 });
+  for (let i=-1; i<=1; i+=2){
+    for (let j=-1; j<=1; j+=2){
+      const up = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, H, 0.04),
+        upMat
+      );
+      up.position.set(i*(W/2 - 0.04), H/2, j*(D/2 - 0.04));
+      up.castShadow = true;
+      g.add(up);
+    }
+  }
+
+  // Shelves
+  const shelfMat = new THREE.MeshStandardMaterial({ color: C.woodLight, roughness:0.85 });
+  const ys = [0.3, 0.85, 1.4, 1.95];
+  ys.forEach(y=>{
+    const sh = new THREE.Mesh(
+      new THREE.BoxGeometry(W, 0.03, D),
+      shelfMat
+    );
+    sh.position.y = y;
+    sh.castShadow = true; sh.receiveShadow = true;
+    g.add(sh);
+  });
+
+  // A few ceramic pieces scattered
+  const ceramicMat = new THREE.MeshStandardMaterial({ color: 0xe9d7c0, roughness:0.85 });
+  const ceramicMat2 = new THREE.MeshStandardMaterial({ color: 0xa37250, roughness:0.9 });
+  const ceramicMat3 = new THREE.MeshStandardMaterial({ color: 0xf2ebd9, roughness:0.85 });
+  const mats = [ceramicMat, ceramicMat2, ceramicMat3];
+
+  // Bowls and cups on shelves
+  function bowl(x, y, z, r, mat){
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(r, r*0.85, r*0.9, 16), mat);
+    b.position.set(x, y + r*0.45, z); b.castShadow = true; g.add(b);
+  }
+  function cup(x, y, z, mat){
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.09, 12), mat);
+    c.position.set(x, y + 0.045, z); c.castShadow = true; g.add(c);
+  }
+  function vase(x, y, z, mat){
+    const v = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.18, 14), mat);
+    v.position.set(x, y + 0.09, z); v.castShadow = true; g.add(v);
+  }
+
+  ys.slice(0,3).forEach((y, yi)=>{
+    const top = y + 0.015;
+    for (let k=0; k<8; k++){
+      const x = -W/2 + 0.25 + k*(W/8);
+      const z = (Math.random()-0.5)*0.15;
+      const choice = (k+yi)%3;
+      const mat = mats[(k+yi)%3];
+      if (choice===0) bowl(x, top, z, 0.07, mat);
+      else if (choice===1) cup(x, top, z, mat);
+      else vase(x, top, z, mat);
+    }
+  });
+
+  g.userData = { id:'estanteria', label:'Estantería', dims:'2,60 × 0,43 × 2,20 m', footprint:{w:W,d:D}, type:'shelf' };
+  return g;
+}
+
+function makePerson(color, name){
+  const g = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xd9b094, roughness:0.9 });
+  const clothMat = new THREE.MeshStandardMaterial({ color, roughness:0.9 });
+
+  // Body
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.6, 14), clothMat);
+  body.position.y = 0.95; body.castShadow = true; g.add(body);
+
+  // Legs
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x2e2a25, roughness:0.9 });
+  for (let i=-1; i<=1; i+=2){
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.65, 10), legMat);
+    leg.position.set(i*0.08, 0.32, 0); leg.castShadow = true; g.add(leg);
+  }
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), skinMat);
+  head.position.y = 1.4; head.castShadow = true; g.add(head);
+
+  // Hair cap
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.135, 16, 12, 0, Math.PI*2, 0, Math.PI/2), new THREE.MeshStandardMaterial({ color: 0x3a2e26 }));
+  hair.position.y = 1.4; g.add(hair);
+
+  // Arms
+  const armMat = clothMat;
+  for (let i=-1; i<=1; i+=2){
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 10), armMat);
+    arm.position.set(i*0.21, 1.0, 0);
+    arm.rotation.z = i*0.1;
+    arm.castShadow = true;
+    g.add(arm);
+  }
+
+  g.userData = { id:name.toLowerCase().replace(/\s/g,'_'), label:name, dims:'~1,70 m', footprint:{w:0.5,d:0.4}, type:'person' };
+  return g;
+}
+
+// ============== PLACE OBJECTS ==============
+// Coordinate system: origin at center of room. x = +right(east), z = +front(south)
+// Room extends from -w/2 to +w/2 in x; -d/2 (back, north) to +d/2 (front, south) in z.
+
+const objects = [];
+function place(group, x, z, ry=0){
+  group.position.set(x, 0, z);
+  group.rotation.y = ry;
+  scene.add(group);
+  objects.push(group);
+  return group;
+}
+
+// From plan (top-down): up=north(-z), down=south(+z), left=west(-x), right=east(+x)
+// Estantería: along left wall, runs along south part — but visible plan shows it on left, vertical strip
+// Looking at plan image: estanteria is on LEFT wall, vertical (along z axis)
+// We'll place it against west wall, centered toward back-half.
+const estanteria = place(makeEstanteria(), -ROOM.w/2 + 0.43/2 + 0.05, -ROOM.d/2 + 2.60/2 + 0.05);
+estanteria.rotation.y = -Math.PI/2; // turn so its 1.6m face runs along z
+
+// Mesa amasado — top-left corner, against back wall
+const mesaAmasado = place(makeMesaAmasado(), -ROOM.w/2 + 1.0/2 + 0.1, -ROOM.d/2 + 0.5139/2 + 0.05);
+
+// Mueble — back wall, right of center
+const mueble = place(makeMueble(), 0.7, -ROOM.d/2 + 0.5/2 + 0.05);
+
+// Mesa principal — center of room
+const mesaPrincipal = place(makeMesaPrincipal(), 0.2, 0.0);
+
+// Three Tornos — south side, in a row
+const torno1 = place(makeTorno(1), -0.7, ROOM.d/2 - 0.53/2 - 0.2);
+const torno2 = place(makeTorno(2), 0.0,  ROOM.d/2 - 0.53/2 - 0.2);
+const torno3 = place(makeTorno(3), 0.7,  ROOM.d/2 - 0.53/2 - 0.2);
+
+// Stools (3 — one per torno, slightly in front of each)
+const stool1 = place(makeStool(1), -0.7, ROOM.d/2 - 0.53 - 0.45);
+const stool2 = place(makeStool(2), 0.0,  ROOM.d/2 - 0.53 - 0.45);
+const stool3 = place(makeStool(3), 0.7,  ROOM.d/2 - 0.53 - 0.45);
+
+// Horno — bottom-right corner
+const horno = place(makeHorno(), ROOM.w/2 - 0.5, ROOM.d/2 - 0.5);
+
+// Two people to scale
+const p1 = place(makePerson(C.person1, 'Persona 1'), -1.3, 0.5);
+p1.rotation.y = -0.6;
+const p2 = place(makePerson(C.person2, 'Persona 2'), 1.5, 1.3);
+p2.rotation.y = 2.1;
+
+// Save default transforms
+const defaults = new Map();
+objects.forEach(o => {
+  defaults.set(o.uuid, { pos: o.position.clone(), rot: o.rotation.y });
+});
+
+// ============== INTERACTION ==============
+// Each draggable group needs a "hit" mesh (invisible box for raycast).
+// We'll create child meshes that have userData.parentGroup = the group.
+const dragTargets = [];
+objects.forEach(g => {
+  // Get a bounding box and create an invisible hit mesh
+  const bbox = new THREE.Box3().setFromObject(g);
+  const size = new THREE.Vector3(); bbox.getSize(size);
+  const center = new THREE.Vector3(); bbox.getCenter(center);
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(Math.max(size.x, 0.05), Math.max(size.y, 0.05), Math.max(size.z, 0.05)),
+    new THREE.MeshBasicMaterial({ visible:false })
+  );
+  // Position the hit mesh in WORLD-aligned bbox, but parent it to the group so it moves with it.
+  // Convert center to group-local:
+  const localCenter = center.clone().sub(g.position);
+  // Because rotation may be set, we'd need to inverse-rotate, but our groups have rotation set; do it properly:
+  const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+  const wcenter = center.clone(); // already world
+  // simpler: re-position hit in local without applying group transform: use bbox in local space
+  hit.position.set(0, size.y/2, 0); // approximate: base at y=0
+  // Better: compute local bbox
+  g.updateMatrixWorld(true);
+  const localBox = new THREE.Box3();
+  g.children.forEach(c => {
+    if (c.isMesh){
+      const cb = new THREE.Box3().setFromObject(c);
+      // bring to group local
+      const min = cb.min.clone().sub(g.position);
+      const max = cb.max.clone().sub(g.position);
+      // unrotate
+      if (g.rotation.y !== 0){
+        const m = new THREE.Matrix4().makeRotationY(-g.rotation.y);
+        min.applyMatrix4(m);
+        max.applyMatrix4(m);
+      }
+      const lb = new THREE.Box3();
+      lb.expandByPoint(new THREE.Vector3(Math.min(min.x,max.x), Math.min(min.y,max.y), Math.min(min.z,max.z)));
+      lb.expandByPoint(new THREE.Vector3(Math.max(min.x,max.x), Math.max(min.y,max.y), Math.max(min.z,max.z)));
+      localBox.union(lb);
+    }
+  });
+  const lsize = new THREE.Vector3(); localBox.getSize(lsize);
+  const lcenter = new THREE.Vector3(); localBox.getCenter(lcenter);
+  hit.geometry.dispose();
+  hit.geometry = new THREE.BoxGeometry(Math.max(lsize.x, 0.1), Math.max(lsize.y, 0.1), Math.max(lsize.z, 0.1));
+  hit.position.copy(lcenter);
+  hit.userData.parentGroup = g;
+  g.add(hit);
+  g.userData.hit = hit;
+  g.userData.localSize = lsize.clone();
+  dragTargets.push(hit);
+});
+
+// Orbit controls
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, 1.0, 0);
+orbit.enableDamping = true;
+orbit.dampingFactor = 0.08;
+orbit.minDistance = 3;
+orbit.maxDistance = 18;
+orbit.maxPolarAngle = Math.PI/2 - 0.02;
+// Use right mouse for orbit, leave left for selection/drag
+orbit.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.PAN,
+  RIGHT: THREE.MOUSE.PAN,
+};
+orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+orbit.update();
+
+// ============== MANUAL DRAG (raycast against floor plane) ==============
+let selected = null;
+let isDragging = false;
+let dragGroup = null;
+let dragOffset = new THREE.Vector3();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0 plane
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function setPointer(ev){
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((ev.clientX - rect.left)/rect.width)*2 - 1;
+  pointer.y = -((ev.clientY - rect.top)/rect.height)*2 + 1;
+}
+
+function pickGroup(ev){
+  setPointer(ev);
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(dragTargets, false);
+  return hits.length ? hits[0].object.userData.parentGroup : null;
+}
+
+function getPlaneHit(ev, target){
+  setPointer(ev);
+  raycaster.setFromCamera(pointer, camera);
+  raycaster.ray.intersectPlane(dragPlane, target);
+}
+
+let downAt = null;
+let downGroup = null;
+let movedDuringDown = false;
+
+renderer.domElement.addEventListener('pointerdown', (ev)=>{
+  if (ev.button !== 0) return;
+  if (rulerActive) return;
+  downAt = { x: ev.clientX, y: ev.clientY };
+  movedDuringDown = false;
+  downGroup = pickGroup(ev);
+  if (downGroup){
+    // Disable orbit immediately so left-drag moves the object instead of orbiting
+    orbit.enabled = false;
+    isDragging = true;
+    dragGroup = downGroup;
+    const hit = new THREE.Vector3();
+    getPlaneHit(ev, hit);
+    dragOffset.set(downGroup.position.x - hit.x, 0, downGroup.position.z - hit.z);
+    renderer.domElement.style.cursor = 'grabbing';
+    renderer.domElement.setPointerCapture(ev.pointerId);
+  }
+});
+
+renderer.domElement.addEventListener('pointermove', (ev)=>{
+  // Hover cursor
+  if (!isDragging && ev.buttons === 0){
+    const g = pickGroup(ev);
+    renderer.domElement.style.cursor = g ? 'grab' : '';
+  }
+  if (downAt){
+    const dx = ev.clientX - downAt.x, dy = ev.clientY - downAt.y;
+    if (Math.hypot(dx, dy) > 3) movedDuringDown = true;
+  }
+  if (!isDragging || !dragGroup) return;
+  const hit = new THREE.Vector3();
+  getPlaneHit(ev, hit);
+  let nx = hit.x + dragOffset.x;
+  let nz = hit.z + dragOffset.z;
+
+  // Clamp inside room based on rotated bbox
+  const sz = dragGroup.userData.localSize;
+  let bw = sz.x, bd = sz.z;
+  if (Math.abs(Math.sin(dragGroup.rotation.y)) > 0.5){ bw = sz.z; bd = sz.x; }
+  nx = THREE.MathUtils.clamp(nx, -ROOM.w/2 + bw/2 + 0.04, ROOM.w/2 - bw/2 - 0.04);
+  nz = THREE.MathUtils.clamp(nz, -ROOM.d/2 + bd/2 + 0.04, ROOM.d/2 - bd/2 - 0.04);
+
+  dragGroup.position.x = nx;
+  dragGroup.position.z = nz;
+  updateInspectorVals();
+});
+
+renderer.domElement.addEventListener('pointerup', (ev)=>{
+  if (ev.button !== 0) return;
+  if (isDragging){
+    isDragging = false;
+    renderer.domElement.style.cursor = '';
+    try { renderer.domElement.releasePointerCapture(ev.pointerId); } catch(e){}
+    // If user barely moved, treat as click-to-select
+    if (!movedDuringDown && downGroup){
+      select(downGroup);
+    } else if (downGroup){
+      // After drag, keep it selected
+      select(downGroup);
+    }
+    dragGroup = null;
+    setTimeout(()=>{ orbit.enabled = true; }, 30);
+  } else {
+    // No object was under pointer — treat as deselect if pure click
+    if (!movedDuringDown){
+      select(null);
+    }
+  }
+  downAt = null;
+  downGroup = null;
+});
+
+renderer.domElement.addEventListener('pointercancel', ()=>{
+  isDragging = false; dragGroup = null; downAt = null; downGroup = null;
+  orbit.enabled = true;
+  renderer.domElement.style.cursor = '';
+});
+
+// Selection halo (a thin disc under the selected object)
+const haloGeo = new THREE.RingGeometry(0.3, 0.34, 48);
+const haloMat = new THREE.MeshBasicMaterial({ color: 0xc4724a, transparent:true, opacity:0.85, side:THREE.DoubleSide });
+const halo = new THREE.Mesh(haloGeo, haloMat);
+halo.rotation.x = -Math.PI/2;
+halo.position.y = 0.045;
+halo.visible = false;
+scene.add(halo);
+
+function select(g){
+  selected = g;
+  if (!g){
+    halo.visible = false;
+    document.getElementById('iTitle').textContent = '— Sin selección —';
+    document.getElementById('iBody').className = 'empty';
+    document.getElementById('iBody').innerHTML = 'Haz click en un objeto del taller para seleccionarlo. Arrástralo con el mouse para moverlo. Usa los botones para rotarlo.';
+    document.querySelectorAll('.obj').forEach(el=>el.classList.remove('sel'));
+    return;
+  }
+  // Size halo to object footprint
+  const sz = g.userData.localSize;
+  const r = Math.max(sz.x, sz.z) * 0.62;
+  halo.geometry.dispose();
+  halo.geometry = new THREE.RingGeometry(r, r+0.05, 48);
+  halo.position.set(g.position.x, 0.045, g.position.z);
+  halo.visible = true;
+
+  document.getElementById('iTitle').textContent = g.userData.label;
+  document.getElementById('iBody').className = '';
+  document.getElementById('iBody').innerHTML = `
+    <div class="row"><span class="lbl">Dimensiones</span><span class="val">${g.userData.dims}</span></div>
+    <div class="row"><span class="lbl">Posición X</span><span class="val" id="vx">${g.position.x.toFixed(2)} m</span></div>
+    <div class="row"><span class="lbl">Posición Z</span><span class="val" id="vz">${g.position.z.toFixed(2)} m</span></div>
+    <div class="row"><span class="lbl">Rotación</span><span class="val" id="vr">${(g.rotation.y*180/Math.PI).toFixed(0)}°</span></div>
+    <div class="rotbar">
+      <button id="rotL">↺ −15°</button>
+      <button id="rotR">↻ +15°</button>
+      <button id="rot90">90°</button>
+    </div>
+  `;
+  document.getElementById('rotL').onclick = ()=> rotateSelected(-15);
+  document.getElementById('rotR').onclick = ()=> rotateSelected(15);
+  document.getElementById('rot90').onclick = ()=> rotateSelected(90);
+
+  document.querySelectorAll('.obj').forEach(el=>{
+    el.classList.toggle('sel', el.dataset.id === g.userData.id);
+  });
+}
+
+function rotateSelected(deg){
+  if (!selected) return;
+  selected.rotation.y += deg * Math.PI/180;
+  // Re-clamp inside room with new rotation
+  const sz = selected.userData.localSize;
+  let bw = sz.x, bd = sz.z;
+  if (Math.abs(Math.sin(selected.rotation.y)) > 0.5){ bw = sz.z; bd = sz.x; }
+  selected.position.x = THREE.MathUtils.clamp(selected.position.x, -ROOM.w/2 + bw/2 + 0.04, ROOM.w/2 - bw/2 - 0.04);
+  selected.position.z = THREE.MathUtils.clamp(selected.position.z, -ROOM.d/2 + bd/2 + 0.04, ROOM.d/2 - bd/2 - 0.04);
+  halo.position.set(selected.position.x, 0.045, selected.position.z);
+  updateInspectorVals();
+}
+
+function updateInspectorVals(){
+  if (!selected) return;
+  const vx = document.getElementById('vx'); if (vx) vx.textContent = selected.position.x.toFixed(2) + ' m';
+  const vz = document.getElementById('vz'); if (vz) vz.textContent = selected.position.z.toFixed(2) + ' m';
+  const vr = document.getElementById('vr'); if (vr) vr.textContent = (selected.rotation.y*180/Math.PI).toFixed(0) + '°';
+  halo.position.set(selected.position.x, 0.045, selected.position.z);
+}
+
+// ============== SIDEBAR LIST ==============
+const objList = document.getElementById('objList');
+const swatchFor = {
+  mesa: '#c99464', shelf: '#c8c2b3', torno: '#a9a098', kiln: '#d4cfc5',
+  cabinet: '#d9b591', stool: '#8d623f', person: '#c4724a'
+};
+objects.forEach(g => {
+  const el = document.createElement('div');
+  el.className = 'obj';
+  el.dataset.id = g.userData.id;
+  el.innerHTML = `
+    <div class="sw" style="background:${swatchFor[g.userData.type] || '#ccc'}"></div>
+    <div class="nm">${g.userData.label}</div>
+    <div class="eye" title="Mostrar / ocultar" data-eye>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </div>
+  `;
+  const eye = el.querySelector('[data-eye]');
+  eye.onclick = (ev)=>{
+    ev.stopPropagation();
+    g.visible = !g.visible;
+    el.classList.toggle('hidden', !g.visible);
+    eye.innerHTML = g.visible
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    // If currently selected and now hidden, deselect
+    if (!g.visible && selected === g) select(null);
+    // Remove from drag targets when hidden
+    if (g.userData.hit) g.userData.hit.visible = g.visible;
+  };
+  el.onclick = ()=> {
+    select(g);
+    // Frame camera on it gently
+    orbit.target.lerp(new THREE.Vector3(g.position.x, 0.8, g.position.z), 0.6);
+  };
+  objList.appendChild(el);
+});
+
+// ============== VIEW MODES ==============
+const modes = document.getElementById('modes');
+modes.querySelectorAll('button').forEach(b=>{
+  b.onclick = ()=>{
+    modes.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    if (b.dataset.mode === 'top'){
+      animateCamera(new THREE.Vector3(0, 9.5, 0.01), new THREE.Vector3(0, 0, 0));
+      orbit.enableRotate = false;
+    } else {
+      animateCamera(orbitStart, new THREE.Vector3(0, 1.0, 0));
+      orbit.enableRotate = true;
+    }
+  };
+});
+
+function animateCamera(toPos, toTarget){
+  const fromPos = camera.position.clone();
+  const fromTar = orbit.target.clone();
+  const t0 = performance.now();
+  const dur = 800;
+  function step(){
+    const t = Math.min((performance.now()-t0)/dur, 1);
+    const e = t<0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+    camera.position.lerpVectors(fromPos, toPos, e);
+    orbit.target.lerpVectors(fromTar, toTarget, e);
+    orbit.update();
+    if (t<1) requestAnimationFrame(step);
+  }
+  step();
+}
+
+// ============== ACTIONS ==============
+document.getElementById('btnReset').onclick = ()=>{
+  objects.forEach(g => {
+    const d = defaults.get(g.uuid);
+    g.position.copy(d.pos);
+    g.rotation.y = d.rot;
+  });
+  if (selected) {
+    halo.position.set(selected.position.x, 0.045, selected.position.z);
+    updateInspectorVals();
+  }
+  localStorage.removeItem('taller_layout');
+  flashSave('Layout restaurado');
+};
+
+document.getElementById('btnSave').onclick = saveLayout;
+document.getElementById('btnDeselect').onclick = ()=> select(null);
+
+// Expose for tooling
+window.__taller = { objects, ROOM };
+
+// "Set current as initial" — overrides defaults map so Restaurar returns here
+document.getElementById('btnFixInitial').onclick = ()=>{
+  objects.forEach(g => {
+    defaults.set(g.uuid, { pos: g.position.clone(), rot: g.rotation.y });
+  });
+  // Persist as the new baseline
+  const data = objects.map(g => ({ id: g.userData.id, x: g.position.x, z: g.position.z, ry: g.rotation.y }));
+  localStorage.setItem('taller_initial', JSON.stringify(data));
+  flashSave('Posición inicial actualizada');
+};
+
+// ============== RULER TOOL ==============
+const rulerGroup = new THREE.Group();
+scene.add(rulerGroup);
+const measurements = []; // { a, b, line, dotA, dotB, label }
+let rulerActive = false;
+let rulerStart = null; // THREE.Vector3 or null
+let ghostLine = null;
+let ghostDot = null;
+let ghostLabel = null;
+
+const labelLayer = document.createElement('div');
+Object.assign(labelLayer.style, { position:'fixed', inset:'0', pointerEvents:'none', zIndex:5 });
+document.body.appendChild(labelLayer);
+
+// Raycast targets for ruler: all scene meshes (walls, floor, objects)
+function getRulerTargets(){
+  const arr = [];
+  scene.traverse(o => {
+    if (o.isMesh && o !== halo && o !== windowPanel && !measurements.find(m => m.line === o || m.dotA === o || m.dotB === o) && o !== ghostLine && o !== ghostDot){
+      // Skip the invisible hit boxes? No — they help us hit objects easily.
+      arr.push(o);
+    }
+  });
+  return arr;
+}
+
+function castRuler(ev){
+  setPointer(ev);
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(getRulerTargets(), false);
+  return hits.length ? hits[0].point.clone() : null;
+}
+
+function makeDot(p, color=0xc4724a){
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(0.035, 12, 10),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  m.position.copy(p);
+  rulerGroup.add(m);
+  return m;
+}
+
+function makeLine(a, b, color=0x1a1a1a){
+  const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+  const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+  const line = new THREE.Line(geo, mat);
+  rulerGroup.add(line);
+  return line;
+}
+
+function makeLabel(text, ghost=false){
+  const el = document.createElement('div');
+  el.className = 'measure-label' + (ghost ? ' ghost' : '');
+  el.textContent = text;
+  labelLayer.appendChild(el);
+  return el;
+}
+
+function fmt(d){
+  if (d < 1) return (d*100).toFixed(1).replace('.0','') + ' cm';
+  return d.toFixed(2).replace('.', ',') + ' m';
+}
+
+function projectToScreen(p){
+  const v = p.clone().project(camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  return {
+    x: rect.left + (v.x*0.5 + 0.5) * rect.width,
+    y: rect.top + (-v.y*0.5 + 0.5) * rect.height,
+    visible: v.z > -1 && v.z < 1
+  };
+}
+
+function updateLabels(){
+  measurements.forEach(m => {
+    const mid = m.a.clone().add(m.b).multiplyScalar(0.5);
+    const s = projectToScreen(mid);
+    m.label.style.left = s.x + 'px';
+    m.label.style.top = s.y + 'px';
+    m.label.style.display = s.visible ? '' : 'none';
+  });
+  if (ghostLabel && rulerStart && ghostLine){
+    const positions = ghostLine.geometry.attributes.position;
+    const b = new THREE.Vector3(positions.getX(1), positions.getY(1), positions.getZ(1));
+    const mid = rulerStart.clone().add(b).multiplyScalar(0.5);
+    const s = projectToScreen(mid);
+    ghostLabel.style.left = s.x + 'px';
+    ghostLabel.style.top = s.y + 'px';
+    ghostLabel.style.display = s.visible ? '' : 'none';
+  }
+}
+
+function setRulerActive(on){
+  rulerActive = on;
+  const btn = document.getElementById('btnRuler');
+  btn.classList.toggle('on', on);
+  renderer.domElement.classList.toggle('ruler-cursor', on);
+  document.getElementById('btnClearRuler').style.display = (measurements.length || on) ? '' : 'none';
+  if (!on){
+    cancelGhost();
+    rulerStart = null;
+  }
+}
+
+function cancelGhost(){
+  if (ghostLine){ rulerGroup.remove(ghostLine); ghostLine.geometry.dispose(); ghostLine = null; }
+  if (ghostDot){ rulerGroup.remove(ghostDot); ghostDot = null; }
+  if (ghostLabel){ ghostLabel.remove(); ghostLabel = null; }
+}
+
+function clearMeasurements(){
+  measurements.forEach(m => {
+    rulerGroup.remove(m.line); m.line.geometry.dispose();
+    rulerGroup.remove(m.dotA);
+    rulerGroup.remove(m.dotB);
+    m.label.remove();
+  });
+  measurements.length = 0;
+  cancelGhost();
+  rulerStart = null;
+  document.getElementById('btnClearRuler').style.display = rulerActive ? '' : 'none';
+}
+
+document.getElementById('btnRuler').onclick = ()=> setRulerActive(!rulerActive);
+document.getElementById('btnClearRuler').onclick = clearMeasurements;
+
+// Ruler uses 'click' events (pointerdown is being swallowed in this environment).
+renderer.domElement.addEventListener('click', (ev)=>{
+  if (!rulerActive || ev.button !== 0) return;
+  ev.stopImmediatePropagation();
+  ev.preventDefault();
+  const p = castRuler(ev);
+  if (!p) return;
+  if (!rulerStart){
+    rulerStart = p;
+    cancelGhost();
+    ghostDot = makeDot(p);
+    ghostLine = makeLine(p, p.clone(), 0xc4724a);
+    ghostLabel = makeLabel('0 cm', true);
+  } else {
+    const a = rulerStart, b = p;
+    const dist = a.distanceTo(b);
+    const line = makeLine(a, b);
+    const dotA = makeDot(a, 0x1a1a1a);
+    const dotB = makeDot(b, 0x1a1a1a);
+    const label = makeLabel(fmt(dist));
+    measurements.push({ a, b, line, dotA, dotB, label });
+    rulerStart = null;
+    cancelGhost();
+    document.getElementById('btnClearRuler').style.display = '';
+    updateLabels();
+  }
+}, true);
+
+renderer.domElement.addEventListener('pointermove', (ev)=>{
+  if (!rulerActive) return;
+  // Live preview of ghost line + label
+  if (rulerStart && ghostLine){
+    const p = castRuler(ev);
+    if (p){
+      const positions = ghostLine.geometry.attributes.position;
+      positions.setXYZ(1, p.x, p.y, p.z);
+      positions.needsUpdate = true;
+      const dist = rulerStart.distanceTo(p);
+      ghostLabel.textContent = fmt(dist);
+    }
+  }
+}, true);
+
+// Block drag init when ruler active — removed (drag pointerdown already returns early)
+
+function saveLayout(){
+  const data = objects.map(g => ({ id: g.userData.id, x: g.position.x, z: g.position.z, ry: g.rotation.y }));
+  localStorage.setItem('taller_layout', JSON.stringify(data));
+  flashSave('Layout guardado');
+}
+function loadLayout(){
+  // Prefer user-saved layout; fall back to "initial" baseline
+  try{
+    let data = JSON.parse(localStorage.getItem('taller_layout') || 'null');
+    const initial = JSON.parse(localStorage.getItem('taller_initial') || 'null');
+    if (initial){
+      initial.forEach(d => {
+        const g = objects.find(o => o.userData.id === d.id);
+        if (g){ defaults.set(g.uuid, { pos: new THREE.Vector3(d.x, 0, d.z), rot: d.ry }); }
+      });
+      if (!data) data = initial;
+    }
+    if (!data) return;
+    data.forEach(d => {
+      const g = objects.find(o => o.userData.id === d.id);
+      if (g){ g.position.set(d.x, 0, d.z); g.rotation.y = d.ry; }
+    });
+  }catch(e){}
+}
+loadLayout();
+
+function flashSave(msg){
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', top:'85px', left:'50%', transform:'translateX(-50%)',
+    background:'#1a1a1a', color:'#fff', padding:'8px 16px', borderRadius:'8px',
+    fontSize:'12.5px', fontWeight:'500', zIndex:99, opacity:'0', transition:'opacity .2s'
+  });
+  document.body.appendChild(t);
+  requestAnimationFrame(()=> t.style.opacity = '1');
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(), 200); }, 1400);
+}
+
+window.addEventListener('keydown', (e)=>{
+  if (e.key === 'Escape') { if (rulerActive) setRulerActive(false); else select(null); }
+  else if (e.key === 'm' || e.key === 'M') document.getElementById('btnRuler').click();
+  else if (e.key === 'r' || e.key === 'R') document.getElementById('btnReset').click();
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); saveLayout(); }
+  else if (selected){
+    if (e.key === 'ArrowLeft' && e.shiftKey) rotateSelected(-15);
+    else if (e.key === 'ArrowRight' && e.shiftKey) rotateSelected(15);
+  }
+});
+
+// ============== RESIZE ==============
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============== LOOP ==============
+function tick(){
+  orbit.update();
+  updateLabels();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>
